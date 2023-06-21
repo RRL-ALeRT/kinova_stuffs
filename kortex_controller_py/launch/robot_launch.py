@@ -4,7 +4,7 @@ import launch
 import launch_ros
 from launch_ros.actions import Node, ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription,ExecuteProcess
 from launch.substitutions import Command
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
@@ -73,12 +73,22 @@ def generate_launch_description() -> launch.LaunchDescription:
         ],
     )
 
+    rviz_config_file = 'src/kinova_stuffs/kortex_controller_py/rivz/spot.rviz'
+
+    # RViz2 node
+    rviz_node = ExecuteProcess(
+        cmd=['rviz2', '-d', rviz_config_file],
+        output='screen'
+    )
+
+
     return launch.LaunchDescription(
         [
             controller,
             kinova_vision,
             kinova_pointcloud2,
             robot_state_publisher_node,
-            container
+            container,
+            rviz_node
         ]
     )

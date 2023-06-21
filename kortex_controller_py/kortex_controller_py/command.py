@@ -79,46 +79,58 @@ def gripper_command(vel):
     finger.value = vel
     base.SendGripperCommand(gripper_command)
 
-def joy_cb(msg):
-    global latest_gripper_end_time, new_finger_msg
+def joy_cb(msg:Joy):
+    global latest_gripper_end_time, new_finger_msg , emergency_flag
     buttons = msg.buttons
     # if buttons[0]:
 
-    if buttons[1]:
-        example_move_to_home_position(base)
 
-    if buttons[2]:
-        new_finger_msg = True
-        latest_gripper_end_time = node.get_clock().now().nanoseconds / 1e9 + 0.2
-        gripper_command(-0.2)
+    
+    if msg.axes[7]==1:
+        emergency_flag = True
+        node.get_logger().info("emergency stop, are can't move now")
 
-    if buttons[3]:
-        new_finger_msg = True
-        latest_gripper_end_time = node.get_clock().now().nanoseconds / 1e9 + 0.2
-        gripper_command(0.2)
+    if msg.axes[7]==-1:
+        emergency_flag = False
+        node.get_logger().info("arm is activated now!")
+
+
+    if not emergency_flag:
+        if buttons[1]:
+            example_move_to_home_position(base)
+
+        if buttons[2]:
+            new_finger_msg = True
+            latest_gripper_end_time = node.get_clock().now().nanoseconds / 1e9 + 0.2
+            gripper_command(-0.2)
+
+        if buttons[3]:
+            new_finger_msg = True
+            latest_gripper_end_time = node.get_clock().now().nanoseconds / 1e9 + 0.2
+            gripper_command(0.2)
 
 
 def cmd_vel_cb(msg):
-    global latest_cmd_end_time, new_msg
+    global latest_cmd_end_time, new_msg,emergency_flag
+    if not emergency_flag:
+        command = Base_pb2.TwistCommand()
 
-    command = Base_pb2.TwistCommand()
+        command.reference_frame = Base_pb2.CARTESIAN_JOYSTICK
+        command.duration = 0
 
-    command.reference_frame = Base_pb2.CARTESIAN_JOYSTICK
-    command.duration = 0
+        latest_cmd_end_time = node.get_clock().now().nanoseconds / 1e9 + 0.2
 
-    latest_cmd_end_time = node.get_clock().now().nanoseconds / 1e9 + 0.2
+        twist = command.twist
+        twist.linear_x = msg.twist.linear.y / 5
+        twist.linear_y = msg.twist.linear.x / 5
+        twist.linear_z = msg.twist.linear.z / 5
+        twist.angular_x = msg.twist.angular.y * 180 / np.pi / 5
+        twist.angular_y = msg.twist.angular.x * 180 / np.pi / 5
+        twist.angular_z = msg.twist.angular.z * 180 / np.pi / 5
 
-    twist = command.twist
-    twist.linear_x = msg.twist.linear.y / 5
-    twist.linear_y = msg.twist.linear.x / 5
-    twist.linear_z = msg.twist.linear.z / 5
-    twist.angular_x = msg.twist.angular.y * 180 / np.pi / 5
-    twist.angular_y = msg.twist.angular.x * 180 / np.pi / 5
-    twist.angular_z = msg.twist.angular.z * 180 / np.pi / 5
+        base.SendTwistCommand(command)
 
-    base.SendTwistCommand(command)
-
-    new_msg = True
+        new_msg = True
 
     return True
 
@@ -172,10 +184,10 @@ def check_cmd_status():
 def main():
     rclpy.init()
 
-    global node, latest_cmd_end_time, new_msg, latest_gripper_end_time, new_finger_msg, js_pub
+    global node, latest_cmd_end_time, new_msg, latest_gripper_end_time, new_finger_msg, js_pub, emergency_flag
     new_msg = True
     new_finger_msg = True
-
+    emergency_flag = False
     node = rclpy.create_node("kortex_controller")
 
     latest_cmd_end_time = 0.0
