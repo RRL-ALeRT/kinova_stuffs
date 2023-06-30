@@ -23,7 +23,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'command = kortex_controller_py.command:main'
+            'command = kortex_controller_py.command:main',
+            'joint_states_publisher = kortex_controller_py.joint_states_publisher:main'
         ],
     },
 )
