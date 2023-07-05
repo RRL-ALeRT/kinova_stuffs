@@ -1,5 +1,6 @@
 import sys
 import threading
+import time
 
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 
@@ -53,6 +54,10 @@ class KinovaCommand(Node):
         self.sessionManager.CreateSession(session_info)
 
         self.base = BaseClient(self.router)
+
+        if self.base.GetArmState().active_state == Base_pb2.ARMSTATE_IN_FAULT:
+            self.base.ClearFaults()
+            time.sleep(1)
 
         self.new_msg = True
         self.new_finger_msg = True
@@ -114,6 +119,45 @@ class KinovaCommand(Node):
             self.get_logger().info("Timeout on action notification wait")
         return finished
 
+    def nuc_home(self, base):
+        # Make sure the arm is in Single Level Servoing mode
+        base_servo_mode = Base_pb2.ServoingModeInformation()
+        base_servo_mode.servoing_mode = Base_pb2.SINGLE_LEVEL_SERVOING
+        self.base.SetServoingMode(base_servo_mode)
+        
+        # Move arm to ready position
+        self.get_logger().info("Moving the arm to a nuc position")
+        action_type = Base_pb2.RequestedActionType()
+        action_type.action_type = Base_pb2.REACH_JOINT_ANGLES
+        action_list = self.base.ReadAllActions(action_type)
+        action_handle = None
+        for action in action_list.action_list:
+            
+            if action.name == "nuc":
+                action_handle = action.handle
+
+        if action_handle == None:
+            self.get_logger().info("Can't reach safe position. Exiting")
+            sys.exit(0)
+
+        e = threading.Event()
+        notification_handle = self.base.OnNotificationActionTopic(
+            self.check_for_end_or_abort(e),
+            Base_pb2.NotificationOptions()
+        )
+
+        self.base.ExecuteActionFromReference(action_handle)
+
+        # Leave time to action to complete
+        finished = e.wait(TIMEOUT_DURATION)
+        self.base.Unsubscribe(notification_handle)
+
+        if finished:
+            self.get_logger().info("Safe position reached")
+        else:
+            self.get_logger().info("Timeout on action notification wait")
+        return finished
+
     def gripper_command(self, vel):
         # Create the GripperCommand we will send
         gripper_command = Base_pb2.GripperCommand()
@@ -124,6 +168,13 @@ class KinovaCommand(Node):
 
     def joy_cb(self, msg):
         buttons = msg.buttons
+        axes = msg.axes
+
+        if buttons[0]:
+            self.nuc_home(self.base)
+
+        if axes[6] == -1:
+            self.base.ClearFaults()
 
         if buttons[1]:
             self.example_move_to_home_position(self.base)
@@ -159,7 +210,6 @@ class KinovaCommand(Node):
         self.new_msg = True
 
         return True
-
 
     def check_cmd_status(self):
         if self.new_finger_msg:
