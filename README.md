@@ -5,18 +5,7 @@ pip install https://github.com/RRL-ALeRT/kinova_stuffs/raw/master/kortex_api-2.5
 
 ## Fix for collections
 ```
-sudo nano ~/.local/lib/python3.10/site-packages/google/protobuf/internal/containers.py
-```
-add
-```
-if sys.version_info.major == 3 and sys.version_info.minor >= 10:
-    import collections
-    setattr(collections, "MutableMapping", collections.abc.MutableMapping)
-    setattr(collections, "MutableSequence", collections.abc.MutableSequence)
-```
-below
-```
-import sys
+pip install protobuf==3.19.4
 ```
 
 ## Launch
