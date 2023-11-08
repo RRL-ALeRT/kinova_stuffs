@@ -1,3 +1,5 @@
+WE'LL BE SWITCHING TO https://github.com/RRL-ALeRT/ros2_kortex. THIS WORKS PERFECTLY FINE WITH ROS2 HUMBLE IF ANYBODY WANTS TO USE IT.
+
 ## Installation
 ```
 pip install https://github.com/RRL-ALeRT/kinova_stuffs/raw/master/kortex_api-2.5.0.post6-py3-none-any.whl
