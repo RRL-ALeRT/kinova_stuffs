@@ -1,4 +1,5 @@
 WE'LL BE SWITCHING TO https://github.com/RRL-ALeRT/ros2_kortex. THIS WORKS PERFECTLY FINE WITH ROS2 HUMBLE IF ANYBODY WANTS TO USE IT.
+Nah, this one is more stable.
 
 ## Installation
 ```
