@@ -17,9 +17,6 @@ def generate_launch_description() -> launch.LaunchDescription:
         package='kortex_controller_py',
         executable='command',
         output='screen',
-        remappings=[
-            ('/joy', '/joy_kinova')
-        ],
     )
 
     joint_states = Node(
@@ -54,7 +51,7 @@ def generate_launch_description() -> launch.LaunchDescription:
         [
             controller,
             joint_states,
-            kinova_vision,
+            # kinova_vision,
             # kinova_pointcloud2,
             # robot_state_publisher_node,
         ]

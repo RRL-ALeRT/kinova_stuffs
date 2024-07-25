@@ -11,11 +11,14 @@ from rclpy.node import Node
 from geometry_msgs.msg import TwistStamped
 from sensor_msgs.msg import Joy
 import numpy as np
+from std_msgs.msg import Float32
 
 from kortex_api.RouterClient import RouterClient
 from kortex_api.TCPTransport import TCPTransport
 from kortex_api.autogen.messages import Session_pb2
 from kortex_api.SessionManager import SessionManager
+
+from kortex_api.Exceptions import KServerException
 
 # Maximum allowed waiting time during actions (in seconds)
 TIMEOUT_DURATION = 20
@@ -26,8 +29,10 @@ class KinovaCommand(Node):
         super().__init__("kortex_controller")
 
         self.create_timer(1/20, self.check_cmd_status)
-        self.create_subscription(TwistStamped, "/servo_node/delta_twist_cmds", self.cmd_vel_cb, 1)
-        self.create_subscription(Joy, "/joy", self.joy_cb, 1)
+        self.create_subscription(TwistStamped, "/twist_controller/commands", self.cmd_vel_cb, 1)
+        self.create_subscription(Float32, "/twist_controller/gripper_vel", self.gripper_vel_cb, 1)
+        
+        self.create_subscription(Joy, "/kinova_joy", self.joy_cb, 1)
 
         username = "admin"
         password = "admin"
@@ -158,36 +163,33 @@ class KinovaCommand(Node):
             self.get_logger().info("Timeout on action notification wait")
         return finished
 
+    def gripper_vel_cb(self, vel):
+        self.new_finger_msg = True
+        self.latest_gripper_end_time = self.get_clock().now().nanoseconds / 1e9 + 0.2
+
+        self.gripper_command(vel.data * 2.5)
+
     def gripper_command(self, vel):
         # Create the GripperCommand we will send
         gripper_command = Base_pb2.GripperCommand()
         gripper_command.mode = Base_pb2.GRIPPER_SPEED
         finger = gripper_command.gripper.finger.add()
         finger.value = vel
-        self.base.SendGripperCommand(gripper_command)
+        try:
+            self.base.SendGripperCommand(gripper_command)
+        except:
+            self.get_logger().error(f"Stuck in low level servoing probably")
+            self.base.ClearFaults()
+            time.sleep(1)
 
     def joy_cb(self, msg):
         buttons = msg.buttons
-        axes = msg.axes
 
         if buttons[0]:
             self.nuc_home(self.base)
 
-        if axes[6] == -1:
-            self.base.ClearFaults()
-
         if buttons[1]:
             self.example_move_to_home_position(self.base)
-
-        if buttons[2]:
-            self.new_finger_msg = True
-            self.latest_gripper_end_time = self.get_clock().now().nanoseconds / 1e9 + 0.2
-            self.gripper_command(-0.2)
-
-        if buttons[3]:
-            self.new_finger_msg = True
-            self.latest_gripper_end_time = self.get_clock().now().nanoseconds / 1e9 + 0.2
-            self.gripper_command(0.2)
 
     def cmd_vel_cb(self, msg):
         command = Base_pb2.TwistCommand()
@@ -198,12 +200,12 @@ class KinovaCommand(Node):
         self.latest_cmd_end_time = self.get_clock().now().nanoseconds / 1e9 + 0.2
 
         twist = command.twist
-        twist.linear_x = msg.twist.linear.y / 5
-        twist.linear_y = msg.twist.linear.x / 5
-        twist.linear_z = msg.twist.linear.z / 5
-        twist.angular_x = msg.twist.angular.y * 180 / np.pi / 5
-        twist.angular_y = msg.twist.angular.x * 180 / np.pi / 5
-        twist.angular_z = msg.twist.angular.z * 180 / np.pi / 5
+        twist.linear_x = msg.twist.linear.x / 2
+        twist.linear_y = msg.twist.linear.y / 2
+        twist.linear_z = msg.twist.linear.z / 2
+        twist.angular_x = msg.twist.angular.x * 180 / np.pi / 2
+        twist.angular_y = msg.twist.angular.y * 180 / np.pi / 2
+        twist.angular_z = msg.twist.angular.z * 180 / np.pi / 2
 
         self.base.SendTwistCommand(command)
 

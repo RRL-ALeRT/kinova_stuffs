@@ -54,18 +54,18 @@ class KinovaJS(Node):
             js = JointState()
             js.header.stamp = self.get_clock().now().to_msg()
             js.name = [
-                "gen3_joint_1",
-                "gen3_joint_2",
-                "gen3_joint_3",
-                "gen3_joint_4",
-                "gen3_joint_5",
-                "gen3_joint_6",
-                "gen3_finger_joint",
-                "gen3_left_inner_knuckle_joint",
-                "gen3_left_inner_finger_joint",
-                "gen3_right_outer_knuckle_joint",
-                "gen3_right_inner_knuckle_joint",
-                "gen3_right_inner_finger_joint"
+                "joint_1",
+                "joint_2",
+                "joint_3",
+                "joint_4",
+                "joint_5",
+                "joint_6",
+                "finger_joint",
+                "left_inner_knuckle_joint",
+                "left_inner_finger_joint",
+                "right_outer_knuckle_joint",
+                "right_inner_knuckle_joint",
+                "right_inner_finger_joint"
             ]
             js.position = [
                 np.deg2rad(base_feedback.actuators[0].position),
