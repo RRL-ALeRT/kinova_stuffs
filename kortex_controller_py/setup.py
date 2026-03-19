@@ -24,7 +24,9 @@ setup(
     entry_points={
         'console_scripts': [
             'command = kortex_controller_py.command:main',
-            'joint_states_publisher = kortex_controller_py.joint_states_publisher:main'
+            'joint_states_publisher = kortex_controller_py.joint_states_publisher:main',
+            'trajectory_server = kortex_controller_py.trajectory_server:main',
+            'kortex_omni_control = kortex_controller_py.kortex_omni_control:main',
         ],
     },
 )

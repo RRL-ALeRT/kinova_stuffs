@@ -11,8 +11,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import TwistStamped
 from sensor_msgs.msg import Joy
 import numpy as np
-from std_msgs.msg import Float32
-
+from std_msgs.msg import Float32, String, Bool
 from kortex_api.RouterClient import RouterClient
 from kortex_api.TCPTransport import TCPTransport
 from kortex_api.autogen.messages import Session_pb2
@@ -33,6 +32,8 @@ class KinovaCommand(Node):
         self.create_subscription(Float32, "/twist_controller/gripper_vel", self.gripper_vel_cb, 1)
         
         self.create_subscription(Joy, "/kinova_joy", self.joy_cb, 1)
+        self.create_subscription(String, "/goto_position", self.goto_position_cb, 1)
+        self.goto_result_pub = self.create_publisher(Bool, "/goto_position/result", 1)
 
         username = "admin"
         password = "admin"
@@ -60,12 +61,22 @@ class KinovaCommand(Node):
 
         self.base = BaseClient(self.router)
 
-        if self.base.GetArmState().active_state == Base_pb2.ARMSTATE_IN_FAULT:
-            self.base.ClearFaults()
-            time.sleep(1)
+        # Clear faults and ensure single level servoing mode at startup
+        try:
+            if self.base.GetArmState().active_state == Base_pb2.ARMSTATE_IN_FAULT:
+                self.base.ClearFaults()
+                time.sleep(1)
+            
+            # Ensure we're in single level servoing mode
+            base_servo_mode = Base_pb2.ServoingModeInformation()
+            base_servo_mode.servoing_mode = Base_pb2.SINGLE_LEVEL_SERVOING
+            self.base.SetServoingMode(base_servo_mode)
+            time.sleep(0.5)
+        except Exception as e:
+            self.get_logger().error(f"Failed to initialize arm state: {e}")
 
-        self.new_msg = True
-        self.new_finger_msg = True
+        self.new_msg = False
+        self.new_finger_msg = False
 
         self.latest_cmd_end_time = 0.0
         self.latest_gripper_end_time = 0.0
@@ -123,7 +134,48 @@ class KinovaCommand(Node):
         else:
             self.get_logger().info("Timeout on action notification wait")
         return finished
+    def goto_position_cb(self, msg):
+        """Move to a named saved position on the Kortex arm."""
+        position_name = msg.data
+        self.get_logger().info(f"Goto position request: '{position_name}'")
 
+        base_servo_mode = Base_pb2.ServoingModeInformation()
+        base_servo_mode.servoing_mode = Base_pb2.SINGLE_LEVEL_SERVOING
+        self.base.SetServoingMode(base_servo_mode)
+
+        action_type = Base_pb2.RequestedActionType()
+        action_type.action_type = Base_pb2.REACH_JOINT_ANGLES
+        action_list = self.base.ReadAllActions(action_type)
+        action_handle = None
+        for action in action_list.action_list:
+            if action.name == position_name:
+                action_handle = action.handle
+
+        result = Bool()
+        if action_handle is None:
+            self.get_logger().error(f"Can't find '{position_name}' action on the arm.")
+            result.data = False
+            self.goto_result_pub.publish(result)
+            return
+
+        e = threading.Event()
+        notification_handle = self.base.OnNotificationActionTopic(
+            self.check_for_end_or_abort(e),
+            Base_pb2.NotificationOptions()
+        )
+        self.base.ExecuteActionFromReference(action_handle)
+
+        finished = e.wait(TIMEOUT_DURATION)
+        self.base.Unsubscribe(notification_handle)
+
+        if finished:
+            self.get_logger().info(f"'{position_name}' position reached")
+        else:
+            self.get_logger().warn(f"Timeout waiting for '{position_name}'")
+
+        result.data = finished
+        self.goto_result_pub.publish(result)
+        
     def nuc_home(self, base):
         # Make sure the arm is in Single Level Servoing mode
         base_servo_mode = Base_pb2.ServoingModeInformation()
@@ -177,10 +229,16 @@ class KinovaCommand(Node):
         finger.value = vel
         try:
             self.base.SendGripperCommand(gripper_command)
-        except:
-            self.get_logger().error(f"Stuck in low level servoing probably")
-            self.base.ClearFaults()
-            time.sleep(1)
+        except Exception as e:
+            self.get_logger().error(f"Gripper command failed: {e}")
+            try:
+                self.base.ClearFaults()
+                time.sleep(0.5)
+                base_servo_mode = Base_pb2.ServoingModeInformation()
+                base_servo_mode.servoing_mode = Base_pb2.SINGLE_LEVEL_SERVOING
+                self.base.SetServoingMode(base_servo_mode)
+            except Exception as ex:
+                self.get_logger().error(f"Recovery failed: {ex}")
 
     def joy_cb(self, msg):
         buttons = msg.buttons
@@ -207,7 +265,16 @@ class KinovaCommand(Node):
         twist.angular_y = msg.twist.angular.y * 180 / np.pi / 2
         twist.angular_z = msg.twist.angular.z * 180 / np.pi / 2
 
-        self.base.SendTwistCommand(command)
+        try:
+            self.base.SendTwistCommand(command)
+        except Exception as e:
+            self.get_logger().error(f"Failed to send twist command: {e}")
+            try:
+                self.base.ClearFaults()
+                time.sleep(0.5)
+            except:
+                pass
+            return False
 
         self.new_msg = True
 
@@ -220,7 +287,17 @@ class KinovaCommand(Node):
                 self.new_finger_msg = False
         if self.new_msg:
             if self.get_clock().now().nanoseconds / 1e9 > self.latest_cmd_end_time:
-                self.base.Stop()
+                try:
+                    self.base.Stop()
+                except Exception as e:
+                    self.get_logger().warn(f"Could not stop: {e}")
+                    try:
+                        # Switch to single level servoing mode
+                        base_servo_mode = Base_pb2.ServoingModeInformation()
+                        base_servo_mode.servoing_mode = Base_pb2.SINGLE_LEVEL_SERVOING
+                        self.base.SetServoingMode(base_servo_mode)
+                    except Exception as ex:
+                        self.get_logger().error(f"Failed to switch servoing mode: {ex}")
                 self.new_msg = False
 
 

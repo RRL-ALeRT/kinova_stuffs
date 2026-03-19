@@ -16,7 +16,7 @@ def generate_launch_description() -> launch.LaunchDescription:
 
     controller = Node(
         package='kortex_controller_py',
-        executable='kortex_omni_control',
+        executable='trajectory_server',
         output='screen',
     )
 
